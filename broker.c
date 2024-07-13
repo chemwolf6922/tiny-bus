@@ -30,7 +30,7 @@ struct tbus_client_s
 {
     list_head_t broker_node;
     int fd;
-    /** List<tbus_subscription_t> */
+    /** List<tbus_subscription_t*> */
     list_head_t subscriptions;
 };
 
@@ -41,9 +41,9 @@ typedef struct
 {
     tev_handle_t tev;
     int fd;
-    /** TopicTree<List<tbus_subscription_t>> */
+    /** TopicTree<List<tbus_subscription_t&>*> */
     topic_tree_t* topics;
-    /** List<tbus_client_t> */
+    /** List<tbus_client_t*> */
     list_head_t clients;
 } tbus_broker_t;
 
