@@ -44,6 +44,7 @@ tbus_t* tbus_connect(tev_handle_t tev, const char* uds_path)
     tbus_client_t* client = malloc(sizeof(tbus_client_t));
     if (client == NULL)
         goto error;
+    memset(client, 0, sizeof(tbus_client_t));
     client->iface.close = client_close;
     client->iface.subscribe = client_subscribe;
     client->iface.unsubscribe = client_unsubscribe;
@@ -112,6 +113,7 @@ static int client_subscribe(tbus_t* iface, const char* topic, tbus_subscribe_cal
     subscription = malloc(sizeof(client_subscription_t));
     if(subscription == NULL)
         goto error;
+    memset(subscription, 0, sizeof(client_subscription_t));
     subscription->index = client->next_index++;
     subscription->callback = callback;
     subscription->ctx = ctx;
