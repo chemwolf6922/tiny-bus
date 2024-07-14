@@ -20,14 +20,15 @@ enum
     TBUS_MSG_CMD_MAX
 };
 
+/** This should never change */
+typedef uint32_t tbus_message_len_t;
 typedef uint8_t tbus_message_command_t;
-
 typedef struct
 {
+    tbus_message_len_t len;
     uint8_t version;
-    uint8_t options[2];
     tbus_message_command_t command;
-    uint32_t len;
+    uint8_t options[2];
     /** data in TLV format */
     uint8_t data[];
 }__attribute__((packed)) tbus_message_raw_header_t;

@@ -1,13 +1,15 @@
 #include <tev/map.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
 #include "tbus.h"
 #include "message.h"
-#include "socket_util.h"
+#include "message_reader.h"
 
 typedef struct
 {
@@ -21,7 +23,7 @@ typedef struct
     tbus_t iface;
     tev_handle_t tev;
     int fd;
-    stream_reader_t* reader;
+    message_reader_t* reader;
     /** Map<string, client_subscription_t*> */
     map_handle_t subscriptions_by_topic;
     /** Map<tbus_message_sub_index_t, client_subscription&> */
@@ -29,12 +31,13 @@ typedef struct
     tbus_message_sub_index_t next_index;
 } tbus_client_t;
 
+static int uds_connect(const char* path);
 static void client_close(tbus_t* iface);
 static int client_subscribe(tbus_t* iface, const char* topic, tbus_subscribe_callback_t callback, void* ctx);
 static void client_unsubscribe(tbus_t* iface, const char* topic);
 static int client_publish(tbus_t* iface, const char* topic, const uint8_t* data, uint32_t len);
-static void client_read_handler(void* ctx);
-static inline void handle_pub_message(tbus_client_t* client, const tbus_message_t* msg);
+static void on_message(const tbus_message_t* msg, void* ctx);
+static void on_error(void* ctx);
 static int write_message(int fd, const tbus_message_t* msg);
 static void free_subscription(client_subscription_t* subscription);
 static void free_subscription_with_ctx(void* data, void* ctx);
@@ -57,18 +60,42 @@ tbus_t* tbus_connect(tev_handle_t tev, const char* uds_path)
     if (client->subscriptions_by_index == NULL)
         goto error;
     client->next_index = 0;
-    client->reader = stream_reader_new();
-    if (client->reader == NULL)
-        goto error;
     client->fd = uds_connect(uds_path);
     if (client->fd < 0)
         goto error;
-    if(tev_set_read_handler(tev, client->fd, client_read_handler, client) != 0)
+    client->reader = message_reader_new(tev, client->fd);
+    if (client->reader == NULL)
         goto error;
+    client->reader->callbacks.on_message = on_message;
+    client->reader->callbacks.on_message_ctx = client;
+    client->reader->callbacks.on_error = on_error;
+    client->reader->callbacks.on_error_ctx = client;
     return &client->iface;
 error:
     client_close((tbus_t*)client);
     return NULL;
+}
+
+static int uds_connect(const char* path)
+{
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    socklen_t addr_len = offsetof(struct sockaddr_un, sun_path) + strlen(addr.sun_path) + 1;
+    if(path[0] == '@')
+    {
+        addr.sun_path[0] = 0;
+    }
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    if(fd < 0)
+        return -1;
+    if(connect(fd, (struct sockaddr*)&addr, addr_len) != 0)
+    {
+        close(fd);
+        return -1;
+    }
+    return fd;
 }
 
 static void client_close(tbus_t* iface)
@@ -92,7 +119,7 @@ static void client_close(tbus_t* iface)
     }
     if(client->reader != NULL)
     {
-        client->reader->free(client->reader);
+        client->reader->close(client->reader);
     }
     free(client);
 }
@@ -172,64 +199,14 @@ static int client_publish(tbus_t* iface, const char* topic, const uint8_t* data,
     return write_message(client->fd, &msg);
 }
 
-static void client_read_handler(void* ctx)
-{
-    tbus_client_t* client = (tbus_client_t*)ctx;
-    uint8_t* buffer = NULL;
-    ssize_t len = client->reader->read(client->reader, client->fd, &buffer);
-    /** Note len is pre processed and is different from read's return */
-    switch (len)
-    {
-        case -1:
-            // Error or disconnect
-            void (*on_disconnect)(void*) = client->iface.callbacks.on_disconnect;
-            void* on_disconnect_ctx = client->iface.callbacks.on_disconnect_ctx;
-            client_close((tbus_t*)client);
-            if(on_disconnect != NULL)
-            {
-                on_disconnect(on_disconnect_ctx);
-            }
-            else
-            {
-                /** Critical error, abort */
-                assert("Tbus client disconnected without on_disconnect callback" == NULL);
-            }
-            break;
-        case 0:
-            // EAGAIN or EWOULDBLOCK, ignore
-            break;
-        default:
-            // Process message
-            tbus_message_t msg;
-            if(tbus_message_view(buffer, len, &msg) != 0)
-            {
-                // Invalid message, ignore
-                break;
-            }
-            switch (msg.command)
-            {
-                case TBUS_MSG_CMD_PUB:
-                    handle_pub_message(client, &msg);
-                    break;
-                default:
-                    // Invalid message, ignore
-                    break;
-            }
-            break;
-    }
-    if(buffer != NULL)
-    {
-        client->reader->handoff_buffer(client->reader, buffer);
-    }
-}
-
-static inline void handle_pub_message(tbus_client_t* client, const tbus_message_t* msg)
+static void on_message(const tbus_message_t* msg, void* ctx)
 {
     if(msg->p_sub_index == NULL)
     {
         // Invalid message, ignore
         return;
     }
+    tbus_client_t* client = (tbus_client_t*)ctx;
     client_subscription_t* subscription = map_get(
         client->subscriptions_by_index, 
         msg->p_sub_index, 
@@ -240,6 +217,23 @@ static inline void handle_pub_message(tbus_client_t* client, const tbus_message_
         return;
     }
     subscription->callback(msg->topic, msg->data, msg->len, subscription->ctx);
+}
+
+static void on_error(void* ctx)
+{
+    tbus_client_t* client = (tbus_client_t*)ctx;
+    void (*on_disconnect)(void*) = client->iface.callbacks.on_disconnect;
+    void* on_disconnect_ctx = client->iface.callbacks.on_disconnect_ctx;
+    client_close((tbus_t*)client);
+    if(on_disconnect != NULL)
+    {
+        on_disconnect(on_disconnect_ctx);
+    }
+    else
+    {
+        /** Critical error, abort */
+        assert("Tbus client disconnected without on_disconnect callback" == NULL);
+    }
 }
 
 static int write_message(int fd, const tbus_message_t* msg)
