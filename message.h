@@ -25,6 +25,7 @@ typedef uint32_t tbus_message_len_t;
 typedef uint8_t tbus_message_command_t;
 typedef struct
 {
+    /** len is the size of the whole packet, includes sizeof(len) */
     tbus_message_len_t len;
     uint8_t version;
     tbus_message_command_t command;
@@ -58,7 +59,8 @@ typedef struct
 {
     tbus_message_command_t command;
     char* topic;
-    uint32_t len;
+    /** This is NOT len, this is data's length */
+    uint32_t data_len;
     uint8_t* data;
     /** Allow this to be modified by the broker */
     tbus_message_sub_index_t* p_sub_index;

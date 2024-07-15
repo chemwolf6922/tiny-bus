@@ -195,7 +195,7 @@ static int client_publish(tbus_t* iface, const char* topic, const uint8_t* data,
     msg.command = TBUS_MSG_CMD_PUB;
     msg.topic = (char*)topic;
     msg.data = (uint8_t*)data;
-    msg.len = len;
+    msg.data_len = len;
     return write_message(client->fd, &msg);
 }
 
@@ -216,7 +216,7 @@ static void on_message(const tbus_message_t* msg, void* ctx)
         // Invalid subscription, ignore
         return;
     }
-    subscription->callback(msg->topic, msg->data, msg->len, subscription->ctx);
+    subscription->callback(msg->topic, msg->data, msg->data_len, subscription->ctx);
 }
 
 static void on_error(void* ctx)

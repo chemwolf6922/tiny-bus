@@ -2,6 +2,7 @@
 #include <tev/tev.h>
 #include <tev/map.h>
 #include "message.h"
+#include "message_reader.h"
 #include "topic_tree.h"
 #include "list.h"
 
@@ -30,6 +31,7 @@ struct tbus_client_s
 {
     list_head_t broker_node;
     int fd;
+    message_reader_t* reader;
     /** List<tbus_subscription_t*> */
     list_head_t subscriptions;
 };
