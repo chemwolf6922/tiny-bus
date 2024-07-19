@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #pragma region ABI
 
@@ -73,7 +74,7 @@ typedef struct
  * @return The serialized message or NULL on failure
  * @note The caller is responsible for freeing the returned buffer
  */
-uint8_t* tbus_message_serialize(const tbus_message_t* msg, int* len);
+uint8_t* tbus_message_serialize(const tbus_message_t* msg, size_t* len);
 /**
  * Create a view of the message.
  * The view is only valid as long as the original message is valid.
@@ -83,6 +84,6 @@ uint8_t* tbus_message_serialize(const tbus_message_t* msg, int* len);
  * @param msg The message view
  * @return 0 on success, -1 on failure
  */
-int tbus_message_view(const uint8_t* src, int src_len, tbus_message_t* msg);
+int tbus_message_view(const uint8_t* src, size_t src_len, tbus_message_t* msg);
 
 #pragma endregion

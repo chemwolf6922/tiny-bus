@@ -7,6 +7,7 @@ typedef struct message_reader_s message_reader_t;
 struct message_reader_s
 {
     void (*close)(message_reader_t* self);
+    char* (*take_over_buffer)(message_reader_t* self, size_t* size);
     struct
     {
         void (*on_message)(const tbus_message_t* msg, void* ctx);

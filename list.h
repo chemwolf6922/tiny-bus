@@ -8,17 +8,23 @@ struct list_head_s
     list_head_t* prev;
 };
 
-#define LIST_HEAD_INIT(node) { &(node), &(node) }
+#define LIST_INIT(node) \
+    do \
+    {\
+        (node)->next = (node);\
+        (node)->prev = (node);\
+    } while(0)
 
-#define LIST_EMPTY(list) ((list)->next == (list))
+#define LIST_IS_EMPTY(list) ((list)->next == (list))
 
+/** Link node to the end of list. */
 #define LIST_LINK(list, node) \
     do \
     {\
-        (node)->next = (list)->next;\
-        (node)->prev = (list);\
-        (list)->next->prev = (node);\
-        (list)->next = (node);\
+        (node)->prev = (list)->prev;\
+        (node)->next = (list);\
+        (list)->prev->next = (node);\
+        (list)->prev = (node);\
     } while(0)
 
 #define LIST_UNLINK(node) \

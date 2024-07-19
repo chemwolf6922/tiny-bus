@@ -7,21 +7,21 @@
 #include <assert.h>
 #include "message_reader.h"
 
-// Fit the reader in one page
-#define STATIC_BUFFER_SIZE (3840)
+// Fit the buffer in one page
+#define STATIC_BUFFER_SIZE (4000)
 
 typedef struct
 {
     message_reader_t iface;
     tev_handle_t tev;   
     int fd;
-    uint8_t static_buffer[STATIC_BUFFER_SIZE];
-    uint8_t* dynamic_buffer;
-    size_t dynamic_buffer_size;
+    uint8_t* buffer;
+    size_t buffer_size;
     size_t buffer_offset;
 } message_reader_impl_t;
 
 static void message_reader_close(message_reader_t* self);
+static uint8_t* message_reader_take_over_buffer(message_reader_t* self, size_t* size);
 static void read_handler(void* ctx);
 static void error_handler(message_reader_impl_t* this);
 
@@ -34,8 +34,13 @@ message_reader_t* message_reader_new(tev_handle_t tev, int fd)
         goto error;
     memset(this, 0, sizeof(message_reader_impl_t));
     this->iface.close = message_reader_close;
+    this->iface.take_over_buffer = message_reader_take_over_buffer;
     this->tev = tev;
     this->fd = fd;
+    this->buffer_size = STATIC_BUFFER_SIZE;
+    this->buffer = malloc(this->buffer_size);
+    if(!this->buffer)
+        goto error;
     if(tev_set_read_handler(tev, fd, read_handler, this) != 0)
         goto error;
     return (message_reader_t*)this;
@@ -51,9 +56,27 @@ static void message_reader_close(message_reader_t* self)
         return;
     if(this->fd >= 0 && this->tev)
         tev_set_read_handler(this->tev, this->fd, NULL, NULL);
-    if(this->dynamic_buffer)
-        free(this->dynamic_buffer);
+    if(this->buffer)
+        free(this->buffer);
     free(this);
+}
+
+static uint8_t* message_reader_take_over_buffer(message_reader_t* self, size_t* size)
+{
+    message_reader_impl_t* this = (message_reader_impl_t*)self;
+    if(!this)
+        return;
+    uint8_t* new_buffer = malloc(STATIC_BUFFER_SIZE);
+    if(!new_buffer)
+        return;
+    uint8_t* old_buffer = this->buffer;
+    *size = this->buffer_offset;
+    this->buffer = new_buffer;
+    this->buffer_size = STATIC_BUFFER_SIZE;
+    this->buffer_offset = 0;
+error:
+    *size = 0;
+    return NULL;
 }
 
 static void read_handler(void* ctx)
@@ -65,7 +88,7 @@ static void read_handler(void* ctx)
     {
         ssize_t read_len = read(
             this->fd, 
-            this->static_buffer + this->buffer_offset, 
+            this->buffer + this->buffer_offset, 
             sizeof(tbus_message_len_t) - this->buffer_offset);
         switch(read_len)
         {
@@ -85,26 +108,25 @@ static void read_handler(void* ctx)
         this->buffer_offset += read_len;
         if(this->buffer_offset < sizeof(tbus_message_len_t))
             return;
-        memcpy(&msg_len, this->static_buffer, sizeof(tbus_message_len_t));
+        memcpy(&msg_len, this->buffer, sizeof(tbus_message_len_t));
         if(msg_len > STATIC_BUFFER_SIZE)
         {
-            this->dynamic_buffer = malloc(msg_len);
-            if(!this->dynamic_buffer)
+            uint8_t* new_buffer = realloc(this->buffer, msg_len);
+            if(!new_buffer)
             {
                 /** Another option is to read out and ignore this packet */
                 error_handler(this);
                 return;
             }
-            memcpy(this->dynamic_buffer, this->static_buffer, sizeof(tbus_message_len_t));
-            this->dynamic_buffer_size = msg_len;
+            this->buffer = new_buffer;
+            this->buffer_size = msg_len;
         }
     }
-    memcpy(&msg_len, this->static_buffer, sizeof(tbus_message_len_t));
+    memcpy(&msg_len, this->buffer, sizeof(tbus_message_len_t));
     /** read rest of the data */
-    uint8_t* buffer = this->dynamic_buffer ? this->dynamic_buffer : this->static_buffer;
     ssize_t read_len = read(
         this->fd,
-        buffer + this->buffer_offset,
+        this->buffer + this->buffer_offset,
         msg_len - this->buffer_offset);
     switch(read_len)
     {
@@ -126,7 +148,7 @@ static void read_handler(void* ctx)
         return;
     /** We have a full message */
     tbus_message_t msg;
-    if(tbus_message_view(buffer, msg_len, &msg) != 0)
+    if(tbus_message_view(this->buffer, msg_len, &msg) != 0)
     {
         /** ignore this message */
         goto finish;
@@ -137,11 +159,10 @@ static void read_handler(void* ctx)
     }
 finish:
     this->buffer_offset = 0;
-    if(this->dynamic_buffer)
+    if(this->buffer_size > STATIC_BUFFER_SIZE)
     {
-        free(this->dynamic_buffer);
-        this->dynamic_buffer = NULL;
-        this->dynamic_buffer_size = 0;
+        this->buffer = realloc(this->buffer, STATIC_BUFFER_SIZE);
+        this->buffer_size = STATIC_BUFFER_SIZE;
     }
 }
 
