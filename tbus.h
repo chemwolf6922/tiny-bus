@@ -8,7 +8,6 @@
 #include <tev/tev.h>
 
 typedef void (*tbus_subscribe_callback_t)(const char* topic, const uint8_t* data, uint32_t len, void* ctx);
-
 typedef struct tbus_s tbus_t;
 
 struct tbus_s

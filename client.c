@@ -11,6 +11,7 @@
 #include "message.h"
 #include "message_reader.h"
 #include "message_writer.h"
+#include "common.h"
 
 typedef struct
 {
@@ -45,6 +46,9 @@ static void free_subscription_with_ctx(void* data, void* ctx);
 
 tbus_t* tbus_connect(tev_handle_t tev, const char* uds_path)
 {
+    if (!tev)
+        return NULL;
+    const char* path = uds_path ? uds_path : TBUS_DEFAULT_UDS_PATH;
     tbus_client_t* client = malloc(sizeof(tbus_client_t));
     if (client == NULL)
         goto error;
@@ -61,7 +65,7 @@ tbus_t* tbus_connect(tev_handle_t tev, const char* uds_path)
     if (client->subscriptions_by_index == NULL)
         goto error;
     client->next_index = 0;
-    client->fd = uds_connect(uds_path);
+    client->fd = uds_connect(path);
     if (client->fd < 0)
         goto error;
     client->writer = message_writer_new(tev, client->fd);
