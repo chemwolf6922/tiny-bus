@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 
 #pragma region ABI
 
@@ -45,10 +46,12 @@ enum
 
 typedef uint64_t tbus_message_sub_index_t;
 
+typedef uint8_t tbus_message_raw_tlv_type_t;
+typedef uint32_t tbus_message_raw_tlv_len_t;
 typedef struct
 {
-    uint8_t type;
-    uint32_t len;
+    tbus_message_raw_tlv_type_t type;
+    tbus_message_raw_tlv_len_t len;
     uint8_t data[];
 }__attribute__((packed)) tbus_message_raw_tlv_t;
 
@@ -63,9 +66,24 @@ typedef struct
     /** This is NOT len, this is data's length */
     uint32_t data_len;
     uint8_t* data;
-    /** Allow this to be modified by the broker */
+    /** 
+     * Allow this to be modified by the broker.
+     * DO NOT access this directly, use READ_SUB_INDEX and WRITE_SUB_INDEX instead.
+     */
     tbus_message_sub_index_t* p_sub_index;
 } tbus_message_t;
+
+#define WRITE_SUB_INDEX(msg, sub_index) \
+    do \
+    { \
+        memcpy(msg->p_sub_index, (tbus_message_sub_index_t)sub_index, sizeof(*(msg->p_sub_index))); \
+    } while(0)
+
+#define READ_SUB_INDEX(msg, sub_index) \
+    do \
+    { \
+        memcpy(&sub_index, (msg)->p_sub_index, sizeof(*(msg)->p_sub_index)); \
+    } while(0)
 
 /**
  * Serialize a message to a buffer
