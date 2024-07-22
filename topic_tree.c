@@ -33,6 +33,7 @@ typedef struct
 static void topic_tree_free(topic_tree_t* iface, void (*free_data)(void* data, void* ctx), void* ctx);
 static void* topic_tree_insert(topic_tree_t* iface, const char* topic, void* data);
 static void* topic_tree_remove(topic_tree_t* iface, const char* topic);
+static void* topic_tree_get(topic_tree_t* iface, const char* topic);
 static void topic_tree_match(topic_tree_t* iface, const char* topic, void (*callback)(void* data, void* ctx), void* ctx);
 static bool is_valid_topic(const char* topic);
 static void topic_tree_match_node(topic_tree_node_t* root, const char* topic, void (*callback)(void* data, void* ctx), void* ctx);
@@ -49,6 +50,7 @@ topic_tree_t* topic_tree_new()
     tree->iface.free = topic_tree_free;
     tree->iface.insert = topic_tree_insert;
     tree->iface.remove = topic_tree_remove;
+    tree->iface.get = topic_tree_get;
     tree->iface.match = topic_tree_match;
     tree->root.topic_segment = NULL;
     tree->root.parent = NULL;
@@ -151,6 +153,27 @@ static void* topic_tree_remove(topic_tree_t* iface, const char* topic)
         return data;
     }
     return NULL;
+}
+
+static void* topic_tree_get(topic_tree_t* iface, const char* topic)
+{
+    topic_tree_impl_t* this = (topic_tree_impl_t*)iface;
+    if(!this || !is_valid_topic(topic))
+        return NULL;
+    /** Find the node */
+    topic_tree_node_t* node = &this->root;
+    char* topic_segment = (char*)topic;
+    while(node && *topic_segment)
+    {
+        int topic_segment_len = strchrnul(topic_segment, '/') - topic_segment;
+        node = map_get(node->children, topic_segment, topic_segment_len);
+        topic_segment += topic_segment_len;
+        if(*topic_segment)
+            topic_segment++;
+    }
+    if(!node || node == &this->root)
+        return NULL;
+    return node->data;
 }
 
 static void topic_tree_match(topic_tree_t* iface, const char* topic, void (*callback)(void* data, void* ctx), void* ctx)

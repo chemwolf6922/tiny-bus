@@ -50,15 +50,11 @@ typedef struct
 
 struct tbus_subscription_s
 {
-    list_head_t client_node;
     list_head_t topic_tree_node;
     char* topic;
     tbus_message_sub_index_t sub_index;
     tbus_client_t* client;
 };
-
-#define GET_SUBSCRIPTION_FROM_CLIENT_NODE(node) \
-    ((tbus_subscription_t*)((char*)(node) - offsetof(tbus_subscription_t, client_node)))
 
 #define GET_SUBSCRIPTION_FROM_TOPIC_TREE_NODE(node) \
     ((tbus_subscription_t*)((char*)(node) - offsetof(tbus_subscription_t, topic_tree_node)))
@@ -68,8 +64,8 @@ struct tbus_client_s
     list_head_t broker_node;
     int fd;
     message_reader_t* reader;
-    /** List<tbus_subscription_t> */
-    list_head_t subscriptions;
+    /** Map<topic, tbus_subscription_t*> */
+    map_handle_t subscriptions;
     /** List<tbus_buffer_ref_t> */
     list_head_t buffers;
 };
@@ -166,7 +162,7 @@ static void broker_deinit()
     if(broker->tev)
         tev_free_ctx(broker->tev);
     if(broker->topics)
-        broker->topics->free(broker->topics, NULL, NULL);
+        broker->topics->free(broker->topics, free_list_head_with_ctx, NULL);
     free(broker);
     broker = NULL;
 }
@@ -224,7 +220,9 @@ static tbus_client_t* tbus_client_new(tev_handle_t tev, int fd)
     if(!client)
         goto error;
     bzero(client, sizeof(tbus_client_t));
-    LIST_INIT(&client->subscriptions);
+    client->subscriptions = map_create();
+    if(!client->subscriptions)
+        goto error;
     LIST_INIT(&client->buffers);
     client->fd = fd;
     client->reader = message_reader_new(tev, fd);
@@ -249,14 +247,22 @@ static void tbus_client_free(tbus_client_t* client)
         client->reader->close(client->reader);
     if(client->fd >= 0)
         close(client->fd);
-    LIST_FOR_EACH_SAFE(&client->subscriptions, node)
+    if(client->subscriptions)
     {
-        tbus_subscription_t* sub = GET_SUBSCRIPTION_FROM_CLIENT_NODE(node);
-        list_head_t* topic_tree_entry_data = sub->topic_tree_node.next;
-        LIST_UNLINK(&sub->topic_tree_node);
-        if(LIST_IS_EMPTY(topic_tree_entry_data))
-            broker->topics->remove(broker->topics, sub->topic);
-        tbus_subscription_free(sub);
+        map_entry_t entry = {0};
+        map_forEach(client->subscriptions, entry)
+        {
+            tbus_subscription_t* sub = entry.value;
+            list_head_t* topic_tree_entry_data = sub->topic_tree_node.next;
+            LIST_UNLINK(&sub->topic_tree_node);
+            if(LIST_IS_EMPTY(topic_tree_entry_data))
+            {
+                broker->topics->remove(broker->topics, sub->topic);
+                free(topic_tree_entry_data);
+            }
+            tbus_subscription_free(sub);
+        }
+        map_delete(client->subscriptions, NULL, NULL);
     }
     LIST_FOR_EACH_SAFE(&client->buffers, node)
     {
@@ -274,8 +280,88 @@ static void tbus_client_free(tbus_client_t* client)
 
 static void on_client_message(const tbus_message_t* msg, void* ctx)
 {
-    /** @todo */
-    
+    tbus_client_t* client = (tbus_client_t*)ctx;
+    if(!msg || !client)
+        return;
+    switch(msg->command)
+    {
+        case TBUS_MSG_CMD_SUB:
+            handle_subscription(msg, client);
+            break;
+        case TBUS_MSG_CMD_UNSUB:
+            handle_unsubscription(msg, client);
+            break;
+        case TBUS_MSG_CMD_PUB:
+            handle_publish(msg, client);
+            break;
+        default:
+            break;
+    }
+}
+
+static void handle_subscription(const tbus_message_t* msg, tbus_client_t* client)
+{
+    /** check parameters */
+    if(!msg->topic || !msg->p_sub_index)
+        return;
+    tbus_subscription_t* sub = map_get(client->subscriptions, msg->topic, strlen(msg->topic));
+    if(sub)
+    {
+        /** update sub index for existing subscription */
+        READ_SUB_INDEX(msg, sub->sub_index);
+        return;
+    }
+    sub = tbus_subscription_new(msg->topic, msg->p_sub_index, client);
+    if(!sub)
+        return;
+    if(!map_add(client->subscriptions, sub->topic, strlen(sub->topic), sub))
+    {
+        tbus_subscription_free(sub);
+        return;
+    }
+    list_head_t* topic_tree_entry = broker->topics->get(broker->topics, sub->topic);
+    if(!topic_tree_entry)
+    {
+        topic_tree_entry = malloc(sizeof(list_head_t));
+        if(!topic_tree_entry)
+        {
+            map_remove(client->subscriptions, sub->topic, strlen(sub->topic));
+            tbus_subscription_free(sub);
+            return;
+        }
+        LIST_INIT(topic_tree_entry);
+        if(!broker->topics->insert(broker->topics, sub->topic, topic_tree_entry))
+        {
+            free(topic_tree_entry);
+            map_remove(client->subscriptions, sub->topic, strlen(sub->topic));
+            tbus_subscription_free(sub);
+            return;
+        }
+    }
+    LIST_LINK(topic_tree_entry, &sub->topic_tree_node);
+}
+
+static void handle_unsubscription(const tbus_message_t* msg, tbus_client_t* client)
+{
+    /** check parameters */
+    if(!msg->topic)
+        return;
+    tbus_subscription_t* sub = map_remove(client->subscriptions, msg->topic, strlen(msg->topic));
+    if(!sub)
+        return;
+    list_head_t* topic_tree_entry = sub->topic_tree_node.next;
+    LIST_UNLINK(&sub->topic_tree_node);
+    if(LIST_IS_EMPTY(topic_tree_entry))
+    {
+        broker->topics->remove(broker->topics, sub->topic);
+        free(topic_tree_entry);
+    }
+    tbus_subscription_free(sub);
+}
+
+static void handle_publish(const tbus_message_t* msg, tbus_client_t* client)
+{
+
 }
 
 static void on_client_error(void* ctx)
@@ -287,14 +373,17 @@ static void on_client_error(void* ctx)
 
 static tbus_subscription_t* tbus_subscription_new(const char* topic, tbus_message_sub_index_t* p_sub_index, tbus_client_t* client)
 {
+    if (!topic || !client)
+        return NULL;
     tbus_subscription_t* sub = malloc(sizeof(tbus_subscription_t));
     if(!sub)
-        return NULL;
+        goto error;
     bzero(sub, sizeof(tbus_subscription_t));
     sub->topic = strdup(topic);
     if(!sub->topic)
         goto error;
-    memcpy(&sub->sub_index, p_sub_index, sizeof(tbus_message_sub_index_t));
+    if (p_sub_index)
+        memcpy(&sub->sub_index, p_sub_index, sizeof(tbus_message_sub_index_t));
     sub->client = client;
     return sub;
 error:
@@ -347,4 +436,10 @@ static void tbus_buffer_ref_free(tbus_buffer_ref_t* ref)
     if(!ref)
         return;
     free(ref);
+}
+
+static void free_list_head_with_ctx(void* data, void* ctx)
+{
+    if(data)
+        free(data);
 }

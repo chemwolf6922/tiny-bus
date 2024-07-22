@@ -33,7 +33,16 @@ uint8_t* tbus_message_serialize(const tbus_message_t* msg, size_t* len)
     buffer->version = TBUS_MSG_VERSION;
     buffer->command = msg->command;
     size_t offset = 0;
-    WRITE_TLV_SAFE(buffer->data, offset, TBUS_MSG_TYPE_SUB_INDEX, sizeof(tbus_message_sub_index_t), msg->p_sub_index);
+    if(msg->p_sub_index)
+    {
+        WRITE_TLV_SAFE(buffer->data, offset, TBUS_MSG_TYPE_SUB_INDEX, sizeof(tbus_message_sub_index_t), msg->p_sub_index);
+    }
+    else
+    {
+        /** Always write a sub index */
+        tbus_message_sub_index_t sub_index = 0;
+        WRITE_TLV_SAFE(buffer->data, offset, TBUS_MSG_TYPE_SUB_INDEX, sizeof(tbus_message_sub_index_t), &sub_index);
+    }
     if(msg->topic)
     {
         WRITE_TLV_SAFE(buffer->data, offset, TBUS_MSG_TYPE_TOPIC, strlen(msg->topic) + 1, msg->topic);

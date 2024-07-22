@@ -30,6 +30,14 @@ struct topic_tree_s
     void* (*remove)(topic_tree_t* self, const char* topic);
     
     /**
+     * @brief Get the data associated with a topic.
+     * @param self the topic tree
+     * @param topic the topic to get
+     * @return the data associated with the topic, or NULL if the topic was not in the tree.
+     */
+    void* (*get)(topic_tree_t* self, const char* topic);
+
+    /**
      * @note DO NOT modify the tree in callback.
      * @param self the topic tree
      * @param topic the topic to match
