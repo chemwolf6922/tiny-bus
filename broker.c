@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <errno.h>
+#include <assert.h>
 #include "message.h"
 #include "message_reader.h"
 #include "topic_tree.h"
@@ -359,9 +360,133 @@ static void handle_unsubscription(const tbus_message_t* msg, tbus_client_t* clie
     tbus_subscription_free(sub);
 }
 
+typedef struct
+{
+    tbus_buffer_t* buffer;
+    tbus_message_t* view;
+    list_head_t error_clients;
+} publish_on_match_ctx_t;
+
 static void handle_publish(const tbus_message_t* msg, tbus_client_t* client)
 {
+    /** Check parameters. */
+    if(!msg->topic || !msg->p_sub_index || !msg->data || msg->data_len == 0)
+        return;
+    size_t raw_buffer_size = 0;
+    uint8_t* raw_buffer = client->reader->get_buffer(client->reader, &raw_buffer_size);
+    tbus_buffer_t* buffer = tbus_buffer_new(raw_buffer, raw_buffer_size);
+    if(!buffer)
+        return;
+    publish_on_match_ctx_t ctx = {
+        .buffer = buffer,
+        .view = msg
+    };
+    LIST_INIT(&ctx.error_clients);
+    broker->topics->match(broker->topics, msg->topic, publish_on_match, &ctx);
+    if(ctx.buffer->ref_count == 0)
+    {
+        /** All first transmission finished */
+        /** Unref data */
+        ctx.buffer->data = NULL;
+        tbus_buffer_free(ctx.buffer);
+        return;
+    }
+    /** Acquire the buffer and store in buffers */
+    uint8_t* take_over_buffer = client->reader->take_over_buffer(client->reader, NULL);
+    /** Critical */
+    assert(take_over_buffer != NULL);
+    LIST_LINK(&broker->buffers, &ctx.buffer->node);
+    /** Close error clients. Do it here to avoid client being one of them. */
+    LIST_FOR_EACH_SAFE(&ctx.error_clients, node)
+    {
+        tbus_client_t* error_client = GET_CLIENT_FROM_BROKER_NODE(node);
+        tbus_client_free(error_client);
+    }
+}
 
+static void publish_on_match(void* data, void* ctx)
+{
+    tbus_subscription_t* sub = (tbus_subscription_t*)data;
+    publish_on_match_ctx_t* publish_ctx = (publish_on_match_ctx_t*)ctx;
+    ssize_t bytes_written = 0;
+    /** Overwrite the sub_index */
+    WRITE_SUB_INDEX(publish_ctx->view, sub->sub_index);
+    /** Try write message in one go */
+    if(!LIST_IS_EMPTY(&sub->client->buffers))
+    {
+        /** Client is busy */
+        goto add_ref;
+    }
+    bytes_written = write(sub->client->fd, publish_ctx->buffer->data, publish_ctx->buffer->size);
+    if(bytes_written < 0)
+    {
+        if(errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            /** Client is busy */
+            goto add_ref;
+        }
+        /** Client error */
+        LIST_UNLINK(&sub->client->broker_node);
+        LIST_LINK(&publish_ctx->error_clients, &sub->client->broker_node);
+        return;
+    }
+    if(bytes_written == publish_ctx->buffer->size)
+        return;
+add_ref:
+    tbus_buffer_ref_t* ref = tbus_buffer_ref_new(publish_ctx->buffer);
+    if(!ref)
+    {
+        /** Critical for that client */
+        LIST_UNLINK(&sub->client->broker_node);
+        LIST_LINK(&publish_ctx->error_clients, &sub->client->broker_node);
+        return;
+    }
+    ref->bytes_written = bytes_written;
+    ref->sub_index = sub->sub_index;
+    LIST_LINK(&sub->client->buffers, &ref->node);
+    publish_ctx->buffer->ref_count ++;
+    tev_set_write_handler(broker->tev, sub->client->fd, on_client_write_ready, sub->client);
+}
+
+static void on_client_write_ready(void* ctx)
+{
+    tbus_client_t* client = (tbus_client_t* )ctx;
+    LIST_FOR_EACH_SAFE(&client->buffers, node)
+    {   
+        tbus_buffer_ref_t* ref = GET_BUFFER_REF_FROM_NODE(node);
+        ssize_t bytes_written = write(client->fd, ref->buffer->data + ref->bytes_written, ref->buffer->size - ref->bytes_written);
+        if(bytes_written < 0)
+        {
+            if(errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                /** Client is busy */
+                break;
+            }
+            /** Client error */
+            LIST_UNLINK(&client->broker_node);
+            tbus_buffer_ref_free(ref);
+            return;
+        }
+        ref->bytes_written += bytes_written;
+        if(ref->bytes_written == ref->buffer->size)
+        {
+            /** Transmission finished */
+            LIST_UNLINK(&ref->node);
+            ref->buffer->ref_count --;
+            if(ref->buffer->ref_count == 0)
+            {
+                LIST_UNLINK(&ref->buffer->node);
+                tbus_buffer_free(ref->buffer);
+            }
+            tbus_buffer_ref_free(ref);
+        }
+    }
+    if(!LIST_IS_EMPTY(&client->buffers))
+    {
+        /** Still have data to write. Write handler is still valid */
+        return;
+    }
+    tev_set_write_handler(broker->tev, client->fd, NULL, NULL);
 }
 
 static void on_client_error(void* ctx)

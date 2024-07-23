@@ -20,8 +20,9 @@ typedef struct
     size_t buffer_offset;
 } message_reader_impl_t;
 
-static void message_reader_close(message_reader_t* self);
-static uint8_t* message_reader_take_over_buffer(message_reader_t* self, size_t* size);
+static void message_reader_close(message_reader_t* iface);
+static uint8_t* message_reader_get_buffer(message_reader_t* iface, size_t* size);
+static uint8_t* message_reader_take_over_buffer(message_reader_t* iface, size_t* size);
 static void read_handler(void* ctx);
 static void error_handler(message_reader_impl_t* this);
 
@@ -34,6 +35,7 @@ message_reader_t* message_reader_new(tev_handle_t tev, int fd)
         goto error;
     memset(this, 0, sizeof(message_reader_impl_t));
     this->iface.close = message_reader_close;
+    this->iface.get_buffer = message_reader_get_buffer;
     this->iface.take_over_buffer = message_reader_take_over_buffer;
     this->tev = tev;
     this->fd = fd;
@@ -49,9 +51,9 @@ error:
     return NULL;
 }
 
-static void message_reader_close(message_reader_t* self)
+static void message_reader_close(message_reader_t* iface)
 {
-    message_reader_impl_t* this = (message_reader_impl_t*)self;
+    message_reader_impl_t* this = (message_reader_impl_t*)iface;
     if(!this)
         return;
     if(this->fd >= 0 && this->tev)
@@ -61,16 +63,27 @@ static void message_reader_close(message_reader_t* self)
     free(this);
 }
 
-static uint8_t* message_reader_take_over_buffer(message_reader_t* self, size_t* size)
+static uint8_t* message_reader_get_buffer(message_reader_t* iface, size_t* size)
 {
-    message_reader_impl_t* this = (message_reader_impl_t*)self;
+    message_reader_impl_t* this = (message_reader_impl_t*)iface;
     if(!this)
         return;
+    if(size)
+        *size = this->buffer_offset;
+    return this->buffer;
+}
+
+static uint8_t* message_reader_take_over_buffer(message_reader_t* iface, size_t* size)
+{
+    message_reader_impl_t* this = (message_reader_impl_t*)iface;
+    if(!this)
+        return NULL;
     uint8_t* new_buffer = malloc(STATIC_BUFFER_SIZE);
     if(!new_buffer)
-        return;
+        return NULL;
     uint8_t* old_buffer = this->buffer;
-    *size = this->buffer_offset;
+    if(size)
+        *size = this->buffer_offset;
     this->buffer = new_buffer;
     this->buffer_size = STATIC_BUFFER_SIZE;
     this->buffer_offset = 0;
