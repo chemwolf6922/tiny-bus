@@ -58,7 +58,7 @@ $(TBUS_SUB):$(patsubst %.c,%.o,$(TBUS_SUB_SRC)) $(SHARED_LIB)
 %.o:%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
--include $(ALL_SRC:.c=.d)
+-include $(wildcard *.d)
 
 clean:
 	rm -f *.o *.d $(BROKER) $(TBUS_PUB) $(TBUS_SUB) $(STATIC_LIB) $(SHARED_LIB)*

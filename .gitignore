@@ -1,5 +1,8 @@
 /.vscode
 /*.o
 /*.d
-/*.so
+/*.so*
 /*.a
+/tbus
+/tbus_pub
+/tbus_sub
