@@ -86,13 +86,34 @@ typedef struct
     list_head_t buffers;
 } tbus_broker_t;
 
+static int broker_init(const char* uds_path);
+static void broker_deinit();
+static int uds_listen(const char* path);
+static void on_client_connect(void* ctx);
+static tbus_client_t* tbus_client_new(tev_handle_t tev, int fd);
+static void tbus_client_free(tbus_client_t* client);
+static void on_client_message(const tbus_message_t* msg, void* ctx);
+static void handle_subscription(const tbus_message_t* msg, tbus_client_t* client);
+static void handle_unsubscription(const tbus_message_t* msg, tbus_client_t* client);
+static void handle_publish(const tbus_message_t* msg, tbus_client_t* client);
+static void publish_on_match(void* data, void* ctx);
+static void on_client_write_ready(void* ctx);
+static void on_client_error(void* ctx);
+static tbus_subscription_t* tbus_subscription_new(const char* topic, tbus_message_sub_index_t* p_sub_index, tbus_client_t* client);
+static void tbus_subscription_free(tbus_subscription_t* sub);
+static tbus_buffer_t* tbus_buffer_new(uint8_t* data, size_t size);
+static void tbus_buffer_free(tbus_buffer_t* buffer);
+static tbus_buffer_ref_t* tbus_buffer_ref_new(tbus_buffer_t* buffer);
+static void tbus_buffer_ref_free(tbus_buffer_ref_t* ref);
+static void free_list_head_with_ctx(void* data, void* ctx);
+
 static tbus_broker_t* broker = NULL;
 
 int main(int argc, char const *argv[])
 {
     char* uds_path = TBUS_DEFAULT_UDS_PATH;
     int opt;
-    while((opt = getopt(argc, argv, "p:")) != -1)
+    while((opt = getopt(argc, (char**)argv, "p:")) != -1)
     {
         switch(opt)
         {
@@ -379,7 +400,7 @@ static void handle_publish(const tbus_message_t* msg, tbus_client_t* client)
         return;
     publish_on_match_ctx_t ctx = {
         .buffer = buffer,
-        .view = msg
+        .view = (tbus_message_t*)msg
     };
     LIST_INIT(&ctx.error_clients);
     broker->topics->match(broker->topics, msg->topic, publish_on_match, &ctx);

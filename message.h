@@ -76,13 +76,14 @@ typedef struct
 #define WRITE_SUB_INDEX(msg, sub_index) \
     do \
     { \
-        memcpy(msg->p_sub_index, (tbus_message_sub_index_t)sub_index, sizeof(*(msg->p_sub_index))); \
+        tbus_message_sub_index_t sub_index_tvmv83 = (sub_index);\
+        memcpy((msg)->p_sub_index, &sub_index_tvmv83, sizeof(*((msg)->p_sub_index))); \
     } while(0)
 
 #define READ_SUB_INDEX(msg, sub_index) \
     do \
     { \
-        memcpy(&sub_index, (msg)->p_sub_index, sizeof(*(msg)->p_sub_index)); \
+        memcpy(&(sub_index), (msg)->p_sub_index, sizeof(*(msg)->p_sub_index)); \
     } while(0)
 
 /**

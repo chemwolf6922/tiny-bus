@@ -67,7 +67,7 @@ static uint8_t* message_reader_get_buffer(message_reader_t* iface, size_t* size)
 {
     message_reader_impl_t* this = (message_reader_impl_t*)iface;
     if(!this)
-        return;
+        return NULL;
     if(size)
         *size = this->buffer_offset;
     return this->buffer;
