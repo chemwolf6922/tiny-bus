@@ -50,10 +50,10 @@ $(SHARED_LIB):$(patsubst %.c,%.pic.o,$(LIB_SRC))
 tools:$(TBUS_PUB) $(TBUS_SUB)
 
 $(TBUS_PUB):$(patsubst %.c,%.o,$(TBUS_PUB_SRC)) $(SHARED_LIB)
-	$(CC) $(LDFLAGS) -L. $(patsubst lib%.so,-l%,$(SHARED_LIB)) -o $@ $(patsubst %.c,%.o,$(TBUS_PUB_SRC)) $(patsubst %,-l%,$(DEPENDENCY_LIB))
+	$(CC) $(LDFLAGS) -o $@ $(patsubst %.c,%.o,$(TBUS_PUB_SRC)) $(patsubst %,-l%,$(DEPENDENCY_LIB)) -L. $(patsubst lib%.so,-l%,$(SHARED_LIB))
 
 $(TBUS_SUB):$(patsubst %.c,%.o,$(TBUS_SUB_SRC)) $(SHARED_LIB)
-	$(CC) $(LDFLAGS) -L. $(patsubst lib%.so,-l%,$(SHARED_LIB)) -o $@ $(patsubst %.c,%.o,$(TBUS_SUB_SRC)) $(patsubst %,-l%,$(DEPENDENCY_LIB))
+	$(CC) $(LDFLAGS) -o $@ $(patsubst %.c,%.o,$(TBUS_SUB_SRC)) $(patsubst %,-l%,$(DEPENDENCY_LIB)) -L. $(patsubst lib%.so,-l%,$(SHARED_LIB))
 
 %.pic.o:%.c
 	$(CC) $(CFLAGS) -fPIC -c $< -o $@
@@ -63,9 +63,15 @@ $(TBUS_SUB):$(patsubst %.c,%.o,$(TBUS_SUB_SRC)) $(SHARED_LIB)
 
 -include $(wildcard *.d)
 
+.PHONY:clean
 clean:
 	rm -f *.o *.d $(BROKER) $(TBUS_PUB) $(TBUS_SUB) $(STATIC_LIB) $(SHARED_LIB)*
 
+.PHONY:debug
+debug:
+	$(MAKE) CFLAGS="-g -O0 -DUSE_SIGNAL"
+
+.PHONY:install
 install:lib broker tools
 	install -d $(DESTDIR)/usr/lib
 	install -m 644 $(STATIC_LIB) $(DESTDIR)/usr/lib
@@ -79,6 +85,7 @@ install:lib broker tools
 	install -m 755 $(TBUS_PUB) $(DESTDIR)/usr/bin
 	install -m 755 $(TBUS_SUB) $(DESTDIR)/usr/bin
 
+.PHONY:uninstall
 uninstall:
 	rm -f $(DESTDIR)/usr/lib/$(STATIC_LIB)
 	rm -f $(DESTDIR)/usr/lib/$(SHARED_LIB)*

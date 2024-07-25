@@ -10,10 +10,8 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <sys/eventfd.h>
 #include <errno.h>
 #include <assert.h>
-#include <signal.h>
 #include "message.h"
 #include "message_reader.h"
 #include "topic_tree.h"
@@ -88,10 +86,6 @@ typedef struct
     list_head_t buffers;
 } tbus_broker_t;
 
-#ifdef USE_SIGNAL
-static void signal_handler(int signal);
-static void signal_event_fd_read_handler(void* ctx);
-#endif
 static int broker_init(tev_handle_t tev, const char* uds_path);
 static void broker_deinit();
 static int uds_listen(const char* path);
@@ -114,6 +108,10 @@ static void tbus_buffer_ref_free(tbus_buffer_ref_t* ref);
 static void free_list_head_with_ctx(void* data, void* ctx);
 
 #ifdef USE_SIGNAL
+#include <sys/eventfd.h>
+#include <signal.h>
+static void signal_handler(int signal);
+static void signal_event_fd_read_handler(void* ctx);
 static int signal_event_fd = -1;
 #endif
 static tbus_broker_t* broker = NULL;
@@ -472,12 +470,31 @@ static void handle_publish(const tbus_message_t* msg, tbus_client_t* client)
     }
 }
 
+static void publish_on_match_handle_subscription(tbus_subscription_t* sub, publish_on_match_ctx_t* publish_ctx);
+
 static void publish_on_match(void* data, void* ctx)
 {
-    tbus_subscription_t* sub = (tbus_subscription_t*)data;
+    list_head_t* subs = (list_head_t*)data;
     publish_on_match_ctx_t* publish_ctx = (publish_on_match_ctx_t*)ctx;
-    ssize_t bytes_written = 0;
     /** Overwrite the sub_index */
+    LIST_FOR_EACH_SAFE(subs, node)
+    {
+        tbus_subscription_t* sub = GET_SUBSCRIPTION_FROM_TOPIC_TREE_NODE(node);
+        publish_on_match_handle_subscription(sub, publish_ctx);
+    }
+}
+
+static void publish_on_match_handle_subscription(tbus_subscription_t* sub, publish_on_match_ctx_t* publish_ctx)
+{
+    ssize_t bytes_written = 0;
+    /** Check if client is already in error list, this list should be short. */
+    LIST_FOR_EACH(&publish_ctx->error_clients, node)
+    {
+        tbus_client_t* error_client = GET_CLIENT_FROM_BROKER_NODE(node);
+        if(error_client == sub->client)
+            return;
+    }
+    /** Overwrite sub index. */
     WRITE_SUB_INDEX(publish_ctx->view, sub->sub_index);
     /** Try write message in one go */
     if(!LIST_IS_EMPTY(&sub->client->buffers))
