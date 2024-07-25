@@ -10,8 +10,10 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/eventfd.h>
 #include <errno.h>
 #include <assert.h>
+#include <signal.h>
 #include "message.h"
 #include "message_reader.h"
 #include "topic_tree.h"
@@ -86,7 +88,11 @@ typedef struct
     list_head_t buffers;
 } tbus_broker_t;
 
-static int broker_init(const char* uds_path);
+#ifdef USE_SIGNAL
+static void signal_handler(int signal);
+static void signal_event_fd_read_handler(void* ctx);
+#endif
+static int broker_init(tev_handle_t tev, const char* uds_path);
 static void broker_deinit();
 static int uds_listen(const char* path);
 static void on_client_connect(void* ctx);
@@ -107,10 +113,14 @@ static tbus_buffer_ref_t* tbus_buffer_ref_new(tbus_buffer_t* buffer);
 static void tbus_buffer_ref_free(tbus_buffer_ref_t* ref);
 static void free_list_head_with_ctx(void* data, void* ctx);
 
+#ifdef USE_SIGNAL
+static int signal_event_fd = -1;
+#endif
 static tbus_broker_t* broker = NULL;
 
 int main(int argc, char const *argv[])
 {
+    /** parse args */
     char* uds_path = TBUS_DEFAULT_UDS_PATH;
     int opt;
     while((opt = getopt(argc, (char**)argv, "p:")) != -1)
@@ -126,30 +136,69 @@ int main(int argc, char const *argv[])
     }
     if(!uds_path)
         _exit(EXIT_FAILURE);
-    if(broker_init(uds_path) < 0)
-        _exit(EXIT_FAILURE);
-    tev_main_loop(broker->tev);
+    /** init */
+    tev_handle_t tev = tev_create_ctx();
+    assert(tev != NULL);
+#ifdef USE_SIGNAL
+    signal_event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    assert(signal_event_fd >= 0);
+    assert(tev_set_read_handler(tev, signal_event_fd, signal_event_fd_read_handler, NULL) == 0);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+#endif
+    assert(broker_init(tev, uds_path) == 0);
+    /** event loop */
+    tev_main_loop(tev);
+    /** deinit */
     broker_deinit();
+#ifdef USE_SIGNAL
+    signal(SIGINT, SIG_DFL);
+    signal(SIGTERM, SIG_DFL);
+    if(signal_event_fd >= 0)
+    {
+        tev_set_read_handler(tev, signal_event_fd, NULL, NULL);
+        close(signal_event_fd);
+    }
+#endif
+    tev_free_ctx(tev);
     return 0;
 }
 
-static int broker_init(const char* uds_path)
+#ifdef USE_SIGNAL
+static void signal_handler(int signal)
+{
+    eventfd_t value = 1;
+    eventfd_write(signal_event_fd, value);
+}
+
+static void signal_event_fd_read_handler(void* ctx)
+{
+    eventfd_t value = 0;
+    if(eventfd_read(signal_event_fd, &value) == -1)
+        return;
+    tev_handle_t tev = broker->tev;
+    broker_deinit();
+    tev_set_read_handler(tev, signal_event_fd, NULL, NULL);
+    close(signal_event_fd);
+    signal_event_fd = -1;
+}
+#endif
+
+static int broker_init(tev_handle_t tev, const char* uds_path)
 {
     if(broker)
         return -1;
-    if(!uds_path)
+    if(!uds_path || !tev)
         goto error;
     broker = malloc(sizeof(tbus_broker_t));
     if(!broker)
         goto error;
     bzero(broker, sizeof(tbus_broker_t));
+    broker->tev = tev;
     LIST_INIT(&broker->clients);
     LIST_INIT(&broker->buffers);
     broker->topics = topic_tree_new();
     if(!broker->topics)
-        goto error;
-    broker->tev = tev_create_ctx();
-    if(!broker->tev)
         goto error;
     broker->fd = uds_listen(uds_path);
     if(broker->fd < 0)
@@ -181,8 +230,6 @@ static void broker_deinit()
         tev_set_read_handler(broker->tev, broker->fd, NULL, NULL);
         close(broker->fd);
     }
-    if(broker->tev)
-        tev_free_ctx(broker->tev);
     if(broker->topics)
         broker->topics->free(broker->topics, free_list_head_with_ctx, NULL);
     free(broker);
