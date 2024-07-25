@@ -14,6 +14,7 @@ DEPENDENCY_LIB=tev
 
 STATIC_LIB=libtbus.a
 SHARED_LIB=libtbus.so
+VERSION_SCRIPT=libtbus.version
 LIB_SRC=client.c message.c message_reader.c message_writer.c
 
 BROKER=tbus
@@ -42,7 +43,7 @@ $(STATIC_LIB):$(patsubst %.c,%.o,$(LIB_SRC))
 	$(AR) -rcs $@ *.o
 
 $(SHARED_LIB):$(patsubst %.c,%.pic.o,$(LIB_SRC))
-	$(CC) $(LDFLAGS) -shared -Wl,-soname,$@.$(LIBTBUS_VERSION_MAJOR) -o $@.$(LIBTBUS_VERSION) $^ $(patsubst %,-l%,$(DEPENDENCY_LIB))
+	$(CC) $(LDFLAGS) -shared -Wl,-soname,$@.$(LIBTBUS_VERSION_MAJOR) -o $@.$(LIBTBUS_VERSION) $^ $(patsubst %,-l%,$(DEPENDENCY_LIB)) -Wl,--version-script=$(VERSION_SCRIPT)
 	ln -sf $@.$(LIBTBUS_VERSION) $@.$(LIBTBUS_VERSION_MAJOR)
 	ln -sf $@.$(LIBTBUS_VERSION) $@
 
