@@ -11,6 +11,12 @@
 #include <string.h>
 #include "tbus.h"
 
+static void exit_loop(void* ctx)
+{
+    tbus_t* tbus = (tbus_t*)ctx;
+    tbus->close(tbus);
+}
+
 int main(int argc, char const *argv[])
 {
     /** parse args */
@@ -52,7 +58,9 @@ int main(int argc, char const *argv[])
     assert(tbus != NULL);
     int rc = tbus->publish(tbus, topic, (uint8_t*)message, strlen(message));
     assert(rc == 0);
-    tbus->close(tbus);
+    tev_timeout_handle_t timeout = tev_set_timeout(tev, exit_loop, tbus, 0);
+    assert(timeout != NULL);
+    tev_main_loop(tev);
     tev_free_ctx(tev);
     return 0;
 }

@@ -21,6 +21,7 @@ typedef struct
 } message_reader_impl_t;
 
 static void message_reader_close(message_reader_t* iface);
+static void message_reader_close_direct(void* ctx);
 static uint8_t* message_reader_get_buffer(message_reader_t* iface, size_t* size);
 static uint8_t* message_reader_take_over_buffer(message_reader_t* iface, size_t* size);
 static void read_handler(void* ctx);
@@ -47,13 +48,23 @@ message_reader_t* message_reader_new(tev_handle_t tev, int fd)
         goto error;
     return (message_reader_t*)this;
 error:
-    message_reader_close((message_reader_t*)this);
+    message_reader_close_direct(this);
     return NULL;
 }
 
 static void message_reader_close(message_reader_t* iface)
 {
     message_reader_impl_t* this = (message_reader_impl_t*)iface;
+    if(!this)
+        return;
+    this->iface.callbacks.on_error = NULL;
+    this->iface.callbacks.on_message = NULL;
+    tev_set_timeout(this->tev, message_reader_close_direct, this, 0);
+}
+
+static void message_reader_close_direct(void* ctx)
+{
+    message_reader_impl_t* this = (message_reader_impl_t*)ctx;
     if(!this)
         return;
     if(this->fd >= 0 && this->tev)
