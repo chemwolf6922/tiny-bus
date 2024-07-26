@@ -26,8 +26,6 @@ TBUS_PUB_SRC=tbus_pub.c
 TBUS_SUB=tbus_sub
 TBUS_SUB_SRC=tbus_sub.c
 
-ALL_SRC=$(LIB_SRC) $(BROKER_SRC) $(TBUS_PUB_SRC) $(TBUS_SUB_SRC)
-
 all:broker lib tools
 
 .PHONY:broker

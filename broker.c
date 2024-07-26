@@ -502,7 +502,7 @@ static void publish_on_match_handle_subscription(tbus_subscription_t* sub, publi
         /** Client is busy */
         goto add_ref;
     }
-    bytes_written = write(sub->client->fd, publish_ctx->buffer->data, publish_ctx->buffer->size);
+    bytes_written = send(sub->client->fd, publish_ctx->buffer->data, publish_ctx->buffer->size, MSG_NOSIGNAL);
     if(bytes_written < 0)
     {
         if(errno == EAGAIN || errno == EWOULDBLOCK)
@@ -539,7 +539,7 @@ static void on_client_write_ready(void* ctx)
     LIST_FOR_EACH_SAFE(&client->buffers, node)
     {   
         tbus_buffer_ref_t* ref = GET_BUFFER_REF_FROM_NODE(node);
-        ssize_t bytes_written = write(client->fd, ref->buffer->data + ref->bytes_written, ref->buffer->size - ref->bytes_written);
+        ssize_t bytes_written = send(client->fd, ref->buffer->data + ref->bytes_written, ref->buffer->size - ref->bytes_written, MSG_NOSIGNAL);
         if(bytes_written < 0)
         {
             if(errno == EAGAIN || errno == EWOULDBLOCK)
