@@ -4,7 +4,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
-#include <assert.h>
+#include <stdio.h>
 #include "message_reader.h"
 
 // Fit the buffer in one page
@@ -98,8 +98,10 @@ static uint8_t* message_reader_take_over_buffer(message_reader_t* iface, size_t*
     this->buffer = new_buffer;
     this->buffer_size = STATIC_BUFFER_SIZE;
     this->buffer_offset = 0;
+    return old_buffer;
 error:
-    *size = 0;
+    if(size)
+        *size = 0;
     return NULL;
 }
 
@@ -195,7 +197,8 @@ static void error_handler(message_reader_impl_t* this)
     if(!this->iface.callbacks.on_error)
     {
         /** Critical, abort */
-        assert("No error handler" == NULL);
+        fprintf(stderr, "Critical error: error handler not set.\n");
+        exit(EXIT_FAILURE);
     }
     this->iface.callbacks.on_error(this->iface.callbacks.on_error_ctx);
 }

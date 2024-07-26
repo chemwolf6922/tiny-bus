@@ -2,11 +2,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdio.h>
 #include "tbus.h"
 #include "message.h"
 #include "message_reader.h"
@@ -91,12 +91,12 @@ static int uds_connect(const char* path)
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
+    if(strlen(path) >= sizeof(addr.sun_path) - 1)
+        return -1;
     strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
     socklen_t addr_len = offsetof(struct sockaddr_un, sun_path) + strlen(addr.sun_path) + 1;
     if(path[0] == '@')
-    {
         addr.sun_path[0] = 0;
-    }
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if(fd < 0)
         return -1;
@@ -241,7 +241,8 @@ static void on_error(void* ctx)
     if(on_disconnect == NULL)
     {
         /** Critical error, abort */
-        assert("Tbus client disconnected without on_disconnect callback" == NULL);
+        fprintf(stderr, "Critical error: on_disconnect callback not set.\n");
+        exit(EXIT_FAILURE);
     }
     on_disconnect(on_disconnect_ctx);
 }

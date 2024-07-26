@@ -3,7 +3,6 @@
 #endif
 
 #include <tev/tev.h>
-#include <assert.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -26,6 +25,7 @@ static tbus_t* tbus = NULL;
 
 int main(int argc, char const *argv[])
 {
+    int rc = 0;
     /** parse args */
     char* broker_path = NULL;
     char* topic = "#";
@@ -50,18 +50,39 @@ int main(int argc, char const *argv[])
     }
 
     tev = tev_create_ctx();
-    assert(tev != NULL);
+    if(!tev)
+    {
+        fprintf(stderr, "Failed to create tev context\n");
+        exit(EXIT_FAILURE);
+    }
 #ifdef USE_SIGNAL
     signal_event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-    assert(signal_event_fd >= 0);
-    assert(tev_set_read_handler(tev, signal_event_fd, signal_event_fd_read_handler, NULL) == 0);
+    if(signal_event_fd == -1)
+    {
+        fprintf(stderr, "Failed to create eventfd\n");
+        exit(EXIT_FAILURE);
+    }
+    rc = tev_set_read_handler(tev, signal_event_fd, signal_event_fd_read_handler, NULL);
+    if(rc != 0)
+    {
+        fprintf(stderr, "Failed to set read handler for signal event fd\n");
+        exit(EXIT_FAILURE);
+    }
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 #endif
     tbus = tbus_connect(tev, broker_path);
-    assert(tbus != NULL);
-    int rc = tbus->subscribe(tbus, topic, on_message, NULL);
-    assert(rc == 0);
+    if(!tbus)
+    {
+        fprintf(stderr, "Failed to connect to tbus\n");
+        exit(EXIT_FAILURE);
+    }
+    rc = tbus->subscribe(tbus, topic, on_message, NULL);
+    if(rc != 0)
+    {
+        fprintf(stderr, "Failed to subscribe to topic\n");
+        exit(EXIT_FAILURE);
+    }
 
     tev_main_loop(tev);
 
@@ -96,7 +117,11 @@ static void on_message(const char* topic, const uint8_t* data, uint32_t len, voi
 static void signal_handler(int signal)
 {
     eventfd_t value = 1;
-    eventfd_write(signal_event_fd, value);
+    if(eventfd_write(signal_event_fd, value)!=0)
+    {
+        fprintf(stderr, "Failed to write to signal event fd\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 static void signal_event_fd_read_handler(void* ctx)

@@ -91,13 +91,13 @@ static void* topic_tree_insert(topic_tree_t* iface, const char* topic, void* dat
         {
             child = malloc(sizeof(topic_tree_node_t));
             if(!child)
-                return NULL;
+                goto error;
             memset(child, 0, sizeof(topic_tree_node_t));
             child->topic_segment = strndup(topic_segment, topic_segment_len);
             if(!child->topic_segment)
             {
                 free(child);
-                return NULL;
+                goto error;
             }
             child->topic_segment_len = topic_segment_len;
             child->parent = node;
@@ -106,9 +106,15 @@ static void* topic_tree_insert(topic_tree_t* iface, const char* topic, void* dat
             {
                 free(child->topic_segment);
                 free(child);
-                return NULL;
+                goto error;
             }
-            map_add(node->children, child->topic_segment, child->topic_segment_len, child);
+            if(!map_add(node->children, child->topic_segment, child->topic_segment_len, child))
+            {
+                map_delete(child->children, NULL, NULL);
+                free(child->topic_segment);
+                free(child);
+                goto error;
+            }
         }
         node = child;
         topic_segment += topic_segment_len;
@@ -119,6 +125,17 @@ static void* topic_tree_insert(topic_tree_t* iface, const char* topic, void* dat
     void* old_data = node->data;
     node->data = data;
     return old_data ? old_data : data;
+error:
+    /** go upwards from node and clean all newly created nodes */
+    while(node != &this->root)
+    {
+        topic_tree_node_t* parent = node->parent;
+        if(map_get_length(node->children) != 0)
+            break;
+        topic_tree_node_free(node, NULL);
+        node = parent;
+    }
+    return NULL;
 }
 
 static void* topic_tree_remove(topic_tree_t* iface, const char* topic)

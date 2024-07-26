@@ -17,7 +17,7 @@ static void on_message(const char* topic, const uint8_t* data, uint32_t len, voi
         if(data[i] != random_data[i])
         {
             fprintf(stderr, "data[%d] = %d, random_data[%d] = %d\n", i, data[i], i, random_data[i]);
-            abort();
+            exit(EXIT_FAILURE);
         }
     }
     client->close(client);

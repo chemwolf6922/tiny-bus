@@ -11,7 +11,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <errno.h>
-#include <assert.h>
+#include <stdio.h>
 #include "message.h"
 #include "message_reader.h"
 #include "topic_tree.h"
@@ -118,6 +118,7 @@ static tbus_broker_t* broker = NULL;
 
 int main(int argc, char const *argv[])
 {
+    int rc = 0;
     /** parse args */
     char* uds_path = TBUS_DEFAULT_UDS_PATH;
     int opt;
@@ -133,18 +134,36 @@ int main(int argc, char const *argv[])
         }
     }
     if(!uds_path)
-        _exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     /** init */
     tev_handle_t tev = tev_create_ctx();
-    assert(tev != NULL);
+    if(!tev)
+    {
+        fprintf(stderr, "Failed to create tev context\n");
+        exit(EXIT_FAILURE);
+    }
 #ifdef USE_SIGNAL
     signal_event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-    assert(signal_event_fd >= 0);
-    assert(tev_set_read_handler(tev, signal_event_fd, signal_event_fd_read_handler, NULL) == 0);
+    if(signal_event_fd == -1)
+    {
+        fprintf(stderr, "Failed to create eventfd\n");
+        exit(EXIT_FAILURE);
+    }
+    rc = tev_set_read_handler(tev, signal_event_fd, signal_event_fd_read_handler, NULL);
+    if(rc != 0)
+    {
+        fprintf(stderr, "Failed to set read handler for signal event fd\n");
+        exit(EXIT_FAILURE);
+    }
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 #endif
-    assert(broker_init(tev, uds_path) == 0);
+    rc = broker_init(tev, uds_path);
+    if(rc != 0)
+    {
+        fprintf(stderr, "Failed to init broker\n");
+        exit(EXIT_FAILURE);
+    }
     /** event loop */
     tev_main_loop(tev);
     /** deinit */
@@ -460,7 +479,11 @@ static void handle_publish(const tbus_message_t* msg, tbus_client_t* client)
     /** Acquire the buffer and store in buffers */
     uint8_t* take_over_buffer = client->reader->take_over_buffer(client->reader, NULL);
     /** Critical */
-    assert(take_over_buffer != NULL);
+    if(!take_over_buffer)
+    {
+        fprintf(stderr, "Critical error: Failed to take over buffer\n");
+        exit(EXIT_FAILURE);
+    }
     LIST_LINK(&broker->buffers, &ctx.buffer->node);
     /** Close error clients. Do it here to avoid client being one of them. */
     LIST_FOR_EACH_SAFE(&ctx.error_clients, node)

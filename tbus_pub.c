@@ -3,7 +3,6 @@
 #endif
 
 #include <tev/tev.h>
-#include <assert.h>
 #include <stddef.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -53,13 +52,29 @@ int main(int argc, char const *argv[])
 
     /** publish message */
     tev_handle_t tev = tev_create_ctx();
-    assert(tev != NULL);
+    if(!tev)
+    {
+        fprintf(stderr, "Failed to create tev context\n");
+        exit(EXIT_FAILURE);
+    }
     tbus_t* tbus = tbus_connect(tev, NULL);
-    assert(tbus != NULL);
+    if(!tbus)
+    {
+        fprintf(stderr, "Failed to connect to tbus\n");
+        exit(EXIT_FAILURE);
+    }
     int rc = tbus->publish(tbus, topic, (uint8_t*)message, strlen(message));
-    assert(rc == 0);
+    if(rc != 0)
+    {
+        fprintf(stderr, "Failed to publish message\n");
+        exit(EXIT_FAILURE);
+    }
     tev_timeout_handle_t timeout = tev_set_timeout(tev, exit_loop, tbus, 0);
-    assert(timeout != NULL);
+    if(!timeout)
+    {
+        fprintf(stderr, "Failed to set exit timeout\n");
+        exit(EXIT_FAILURE);
+    }
     tev_main_loop(tev);
     tev_free_ctx(tev);
     return 0;

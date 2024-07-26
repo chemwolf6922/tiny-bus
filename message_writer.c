@@ -3,9 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <stdio.h>
 #include "message_writer.h"
 #include "message.h"
 #include "list.h"
@@ -39,15 +39,15 @@ static void message_buffer_free(message_buffer_t* this);
 message_writer_t* message_writer_new(tev_handle_t tev, int fd)
 {
     message_writer_impl_t* self = malloc(sizeof(message_writer_impl_t));
+    if(!self)
+        return NULL;
+    memset(self, 0, sizeof(message_writer_impl_t));
     self->iface.close = message_writer_close;
     self->iface.write_message = message_writer_write_message;
     self->tev = tev;
     self->fd = fd;
     LIST_INIT(&self->buffers);
     return (message_writer_t*)self;
-error:
-    message_writer_close((message_writer_t*)self);
-    return NULL;
 }
 
 static void message_writer_close(message_writer_t* iface)
@@ -116,7 +116,8 @@ static void error_handler(message_writer_impl_t* this)
     if(!this->iface.callbacks.on_error)
     {
         /** Critical, abort */
-        assert("No error handler" == NULL);
+        fprintf(stderr, "Critical error: error handler not set.\n");
+        exit(EXIT_FAILURE);
     }
     this->iface.callbacks.on_error(this->iface.callbacks.on_error_ctx);
 }

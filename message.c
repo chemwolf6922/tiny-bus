@@ -27,7 +27,10 @@ uint8_t* tbus_message_serialize(const tbus_message_t* msg, size_t* len)
         msg_len += sizeof(tbus_message_raw_tlv_t) + strlen(msg->topic) + 1 /** \0 */;
     tbus_message_raw_header_t* buffer = (tbus_message_raw_header_t*)malloc(msg_len);
     if(!buffer)
+    {
+        *len = 0;
         return NULL;
+    }
     memset(buffer, 0, sizeof(tbus_message_raw_header_t));
     buffer->len = msg_len;
     buffer->version = TBUS_MSG_VERSION;
