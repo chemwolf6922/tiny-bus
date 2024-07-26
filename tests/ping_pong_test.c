@@ -5,11 +5,10 @@
 #include <string.h>
 #include "../tbus.h"
 
-tev_handle_t tev = NULL;
+static tev_handle_t tev = NULL;
 static tbus_t* a = NULL;
 static tbus_t* b = NULL;
-uint64_t counter = 0;
-
+static uint64_t counter = 0;
 static const char* data = "hello world";
 
 static void on_message(const char*, const uint8_t*, uint32_t, void* ctx)
@@ -45,7 +44,7 @@ int main(int argc, char const *argv[])
 
     tev_free_ctx(tev);
 
-    printf("counter: %"PRIu64"\n", counter);
+    printf("%"PRIu64" messages per second\n", counter/10);
 
     return 0;
 }

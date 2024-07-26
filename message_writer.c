@@ -90,7 +90,7 @@ static void write_handler(void* ctx)
     LIST_FOR_EACH_SAFE(&this->buffers, node)
     {
         message_buffer_t* buffer = GET_MESSAGE_BUFFER_FROM_NODE(node);
-        ssize_t bytes_written = send(this->fd, buffer->buffer, buffer->size - buffer->bytes_written, MSG_NOSIGNAL);
+        ssize_t bytes_written = send(this->fd, buffer->buffer + buffer->bytes_written, buffer->size - buffer->bytes_written, MSG_NOSIGNAL);
         if(bytes_written < 0)
         {
             if(errno == EAGAIN || errno == EWOULDBLOCK)
