@@ -37,11 +37,25 @@ MULTIPLE_MESSAGE_TEST_LIB=tbus tev
 $(MULTIPLE_MESSAGE_TEST):$(patsubst %.c,%.o,$(MULTIPLE_MESSAGE_TEST_SRC))
 	$(CC) $(LDFLAGS) -o $@ $^ $(patsubst %,-l%,$(MULTIPLE_MESSAGE_TEST_LIB))
 
+INDEX_ARRAY_TEST=index_array_test
+INDEX_ARRAY_TEST_SRC=index_array_test.c ../index_array.c
+INDEX_ARRAY_TEST_LIB=
+$(INDEX_ARRAY_TEST):$(patsubst %.c,%.o,$(INDEX_ARRAY_TEST_SRC))
+	$(CC) $(LDFLAGS) -o $@ $^ $(patsubst %,-l%,$(INDEX_ARRAY_TEST_LIB))
+
+INDEX_ARRAY_PERF_TEST=index_array_perf_test
+INDEX_ARRAY_PERF_TEST_SRC=index_array_perf_test.c ../index_array.c
+INDEX_ARRAY_PERF_TEST_LIB=tev
+$(INDEX_ARRAY_PERF_TEST):$(patsubst %.c,%.o,$(INDEX_ARRAY_PERF_TEST_SRC))
+	$(CC) $(LDFLAGS) -o $@ $^ $(patsubst %,-l%,$(INDEX_ARRAY_PERF_TEST_LIB))
+
 ALL_TESTS=$(PING_PONG_TEST) \
 		  $(MESSAGE_TEST) \
 		  $(TOPIC_TREE_TEST) \
 		  $(LARGE_MESSAGE_TEST) \
-		  $(MULTIPLE_MESSAGE_TEST)
+		  $(MULTIPLE_MESSAGE_TEST) \
+		  $(INDEX_ARRAY_TEST) \
+		  $(INDEX_ARRAY_PERF_TEST)
 
 .PHONY:test
 test:$(ALL_TESTS)
