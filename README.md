@@ -1,5 +1,3 @@
-# WIP
-This is not fully tested yet.
 # Tiny bus
 This is a pub/sub bus for IPC purpose on Linux. 
 ## Features
