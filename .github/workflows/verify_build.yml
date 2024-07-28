@@ -5,6 +5,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: git clone https://github.com/chemwolf6922/tiny-event-loop.git --recursive ../tev
-      - run: make -C ../tev install -j$(nproc)
+      - run: sudo make -C ../tev install -j$(nproc)
       - uses: actions/checkout@v4
       - run: make -j$(nproc)
