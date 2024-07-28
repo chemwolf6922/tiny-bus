@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#pragma region ABI
+/** ABI */
 
 /** 
  * The message version should only increase on ABI breaking changes
@@ -55,9 +55,7 @@ typedef struct
     uint8_t data[];
 }__attribute__((packed)) tbus_message_raw_tlv_t;
 
-#pragma endregion
-
-#pragma region API
+/** API */
 
 typedef struct
 {
@@ -105,4 +103,3 @@ uint8_t* tbus_message_serialize(const tbus_message_t* msg, size_t* len);
  */
 int tbus_message_view(const uint8_t* src, size_t src_len, tbus_message_t* msg);
 
-#pragma endregion
