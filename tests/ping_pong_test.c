@@ -38,13 +38,14 @@ int main(int argc, char const *argv[])
     b->subscribe(b, "a/normal/topic/b", on_message, b);
     a->publish(a, "a/normal/topic/b", data, strlen(data));
 
-    tev_set_timeout(tev, stop_test, NULL, 10000);
+    tev_set_timeout(tev, stop_test, NULL, 1000);
 
     tev_main_loop(tev);
 
     tev_free_ctx(tev);
 
-    printf("%"PRIu64" messages per second\n", counter/10);
+    assert(counter > 0);
+    printf("%"PRIu64" messages per second\n", counter);
 
     return 0;
 }

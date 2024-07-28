@@ -1,10 +1,13 @@
 name: Verify Build
-on: [push]
+on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - run: git clone https://github.com/chemwolf6922/tiny-event-loop.git --recursive ../tev
-      - run: sudo make -C ../tev install -j$(nproc)
+      - run: make -C ../tev -j$(nproc)
+      - run: sudo make -C ../tev install
       - uses: actions/checkout@v4
       - run: make -j$(nproc)
+      - run: make -C tests -j$(nproc)
+      - run: make -C tests run
