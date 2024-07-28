@@ -5,6 +5,8 @@
 #include <string.h>
 #include "../tbus.h"
 
+#define TEST_DURATION_MS 10
+
 static tev_handle_t tev = NULL;
 static tbus_t* a = NULL;
 static tbus_t* b = NULL;
@@ -25,6 +27,12 @@ static void stop_test(void* ctx)
     b->close(b);
 }
 
+static void start_test(void* ctx)
+{
+    a->publish(a, "a/normal/topic/b", data, strlen(data));
+    tev_set_timeout(tev, stop_test, NULL, TEST_DURATION_MS);
+}
+
 int main(int argc, char const *argv[])
 {
     tev = tev_create_ctx();
@@ -36,15 +44,15 @@ int main(int argc, char const *argv[])
     b = tbus_connect(tev,NULL);
     assert(b);
     b->subscribe(b, "a/normal/topic/b", on_message, b);
-    a->publish(a, "a/normal/topic/b", data, strlen(data));
 
-    tev_set_timeout(tev, stop_test, NULL, 10000);
+    /** Wait for both clients to connect */
+    tev_set_timeout(tev, start_test, NULL, 100);
 
     tev_main_loop(tev);
 
     tev_free_ctx(tev);
 
-    printf("%"PRIu64" messages per second\n", counter/10);
+    printf("%"PRIu64" messages per second\n", counter * 1000 / TEST_DURATION_MS);
 
     return 0;
 }

@@ -40,6 +40,15 @@ static void on_message(const char* topic, const uint8_t* data, uint32_t len, voi
     }
 }
 
+static void send_messages(void* ctx)
+{
+    test_client_t* client = (test_client_t*)ctx;
+    client->client->publish(client->client, "test", random_data, sizeof(random_data));
+    client->client->publish(client->client, "test", random_data, sizeof(random_data));
+    client->client->publish(client->client, "test", random_data, sizeof(random_data));
+    client->client->publish(client->client, "test", random_data, sizeof(random_data));
+}
+
 int main(int argc, char const *argv[])
 {
     /** prepare test data */
@@ -64,10 +73,7 @@ int main(int argc, char const *argv[])
     c.client->subscribe(c.client, "#", on_message, &c);
     d.client->subscribe(d.client, "test", on_message, &d);
     d.client->subscribe(d.client, "test/#", on_message, &d);
-    a.client->publish(a.client, "test", random_data, sizeof(random_data));
-    a.client->publish(a.client, "test", random_data, sizeof(random_data));
-    a.client->publish(a.client, "test", random_data, sizeof(random_data));
-    a.client->publish(a.client, "test", random_data, sizeof(random_data));
+    tev_set_timeout(tev, send_messages, &a, 100);
 
     tev_main_loop(tev);
     tev_free_ctx(tev);
