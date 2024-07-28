@@ -122,12 +122,16 @@ int main(int argc, char const *argv[])
     /** parse args */
     char* uds_path = TBUS_DEFAULT_UDS_PATH;
     int opt;
-    while((opt = getopt(argc, (char**)argv, "p:")) != -1)
+    while((opt = getopt(argc, (char**)argv, "p:v")) != -1)
     {
         switch(opt)
         {
             case 'p':
                 uds_path = optarg;
+                break;
+            case 'v':
+                printf("Tbus broker version: %s\n", TBUS_VERSION);
+                exit(EXIT_SUCCESS);
                 break;
             default:
                 break;

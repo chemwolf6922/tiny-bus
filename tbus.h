@@ -28,3 +28,5 @@ struct tbus_s
 };
 
 tbus_t* tbus_connect(tev_handle_t tev, const char* uds_path);
+
+const char* tbus_get_version();

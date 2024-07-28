@@ -1,6 +1,7 @@
 {
     global:
         tbus_connect;
+        tbus_get_version;
     local:
         *;
 };

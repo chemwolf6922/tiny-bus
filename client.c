@@ -86,6 +86,11 @@ error:
     return NULL;
 }
 
+const char* tbus_get_version()
+{
+    return TBUS_VERSION;
+}
+
 static int uds_connect(const char* path)
 {
     struct sockaddr_un addr;

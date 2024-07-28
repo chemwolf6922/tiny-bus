@@ -30,7 +30,7 @@ int main(int argc, char const *argv[])
     char* broker_path = NULL;
     char* topic = "#";
     int opt;
-    while((opt = getopt(argc, (char**)argv, "p:t:h")) != -1)
+    while((opt = getopt(argc, (char**)argv, "p:t:hv")) != -1)
     {
         switch(opt)
         {
@@ -42,6 +42,10 @@ int main(int argc, char const *argv[])
                 break;
             case 'h':
                 printf("Usage: %s [-p <broker_path>] [-t <topic>]\n", argv[0]);
+                exit(EXIT_SUCCESS);
+                break;
+            case 'v':
+                printf("Tbus library version: %s\n", tbus_get_version());
                 exit(EXIT_SUCCESS);
                 break;
             default:
