@@ -46,6 +46,10 @@ ALL_TESTS=$(PING_PONG_TEST) \
 .PHONY:test
 test:$(ALL_TESTS)
 
+.PHONY:run
+run:test
+	./run_tests.sh
+
 %.o:%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
