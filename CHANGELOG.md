@@ -1,3 +1,5 @@
+## v1.0
+* v1.0-rc2
 ## v1.0-rc2
 * Add github actions.
 * Fix racing conditions in some tests.
